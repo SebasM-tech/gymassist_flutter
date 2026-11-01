@@ -1,0 +1,11 @@
+{
+  "elements": {},
+  "imports": [
+    "package:flutter/foundation.dart",
+    "package:flutter/material.dart",
+    "package:go_router/go_router.dart",
+    "package:gymassist/core/theme/app_theme.dart",
+    "package:gymassist/core/utils/validators.dart",
+    "package:gymassist/core/widgets/common.dart"
+  ]
+}

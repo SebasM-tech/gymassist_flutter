@@ -1,0 +1,8 @@
+{
+  "elements": {},
+  "imports": [
+    "package:flutter_riverpod/flutter_riverpod.dart",
+    "package:gymassist/core/di/providers.dart",
+    "package:gymassist/core/domain/enums.dart"
+  ]
+}

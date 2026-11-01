@@ -1,0 +1,7 @@
+{
+  "elements": {},
+  "imports": [
+    "package:flutter_secure_storage/flutter_secure_storage.dart",
+    "package:gymassist/core/domain/enums.dart"
+  ]
+}

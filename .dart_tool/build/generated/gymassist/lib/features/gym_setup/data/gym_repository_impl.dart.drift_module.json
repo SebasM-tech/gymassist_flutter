@@ -1,0 +1,9 @@
+{
+  "elements": {},
+  "imports": [
+    "package:drift/drift.dart",
+    "package:gymassist/core/database/app_database.dart",
+    "package:gymassist/features/gym_setup/domain/gym_domain.dart",
+    "package:uuid/uuid.dart"
+  ]
+}

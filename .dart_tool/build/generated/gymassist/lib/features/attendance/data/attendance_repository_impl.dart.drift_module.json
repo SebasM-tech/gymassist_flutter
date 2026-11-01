@@ -1,0 +1,10 @@
+{
+  "elements": {},
+  "imports": [
+    "package:drift/drift.dart",
+    "package:gymassist/core/database/app_database.dart",
+    "package:gymassist/core/domain/enums.dart",
+    "package:gymassist/features/attendance/domain/attendance_domain.dart",
+    "package:uuid/uuid.dart"
+  ]
+}

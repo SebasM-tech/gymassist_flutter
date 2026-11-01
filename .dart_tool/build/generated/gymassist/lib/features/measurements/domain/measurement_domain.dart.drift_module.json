@@ -1,0 +1,8 @@
+{
+  "elements": {},
+  "imports": [
+    "package:gymassist/core/domain/ports.dart",
+    "package:gymassist/core/domain/result.dart",
+    "package:gymassist/features/measurements/domain/imc_calculator.dart"
+  ]
+}

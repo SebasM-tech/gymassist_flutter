@@ -1,0 +1,7 @@
+{
+  "elements": {},
+  "imports": [
+    "package:drift/drift.dart",
+    "package:gymassist/core/domain/enums.dart"
+  ]
+}

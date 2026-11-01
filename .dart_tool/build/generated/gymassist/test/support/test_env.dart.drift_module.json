@@ -1,0 +1,22 @@
+{
+  "elements": {},
+  "imports": [
+    "package:drift/native.dart",
+    "package:gymassist/core/database/app_database.dart",
+    "package:gymassist/core/domain/enums.dart",
+    "package:gymassist/core/security/password_hasher.dart",
+    "package:gymassist/core/security/session_store.dart",
+    "package:gymassist/features/attendance/data/attendance_repository_impl.dart",
+    "package:gymassist/features/attendance/domain/attendance_service.dart",
+    "package:gymassist/features/auth/data/user_repository_impl.dart",
+    "package:gymassist/features/auth/domain/auth_service.dart",
+    "package:gymassist/features/clients/data/client_repository_impl.dart",
+    "package:gymassist/features/clients/domain/client_service.dart",
+    "package:gymassist/features/dashboard/domain/dashboard_service.dart",
+    "package:gymassist/features/gym_setup/data/gym_repository_impl.dart",
+    "package:gymassist/features/gym_setup/domain/gym_domain.dart",
+    "package:gymassist/features/payments/data/payment_repository_impl.dart",
+    "package:gymassist/features/plans/data/plan_repository_impl.dart",
+    "package:gymassist/features/plans/domain/plan_domain.dart"
+  ]
+}

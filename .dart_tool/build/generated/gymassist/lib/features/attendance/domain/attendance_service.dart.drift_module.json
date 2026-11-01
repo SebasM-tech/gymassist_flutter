@@ -1,0 +1,12 @@
+{
+  "elements": {},
+  "imports": [
+    "package:gymassist/core/domain/enums.dart",
+    "package:gymassist/core/domain/ports.dart",
+    "package:gymassist/core/domain/result.dart",
+    "package:gymassist/core/utils/date_utils.dart",
+    "package:gymassist/features/attendance/domain/attendance_domain.dart",
+    "package:gymassist/features/clients/domain/client_domain.dart",
+    "package:gymassist/features/clients/domain/client_status.dart"
+  ]
+}

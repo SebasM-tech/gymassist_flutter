@@ -1,0 +1,1 @@
+{"valid_import":true,"imports":[{"uri":"package:flutter/material.dart","transitive":false},{"uri":"package:intl/intl.dart","transitive":false},{"uri":"package:gymassist/core/theme/app_theme.dart","transitive":false},{"uri":"package:gymassist/features/clients/domain/client_status.dart","transitive":false}],"elements":[]}

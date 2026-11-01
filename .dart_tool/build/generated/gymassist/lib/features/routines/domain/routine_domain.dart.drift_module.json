@@ -1,0 +1,8 @@
+{
+  "elements": {},
+  "imports": [
+    "package:gymassist/core/domain/enums.dart",
+    "package:gymassist/core/domain/result.dart",
+    "package:gymassist/core/storage/file_storage.dart"
+  ]
+}

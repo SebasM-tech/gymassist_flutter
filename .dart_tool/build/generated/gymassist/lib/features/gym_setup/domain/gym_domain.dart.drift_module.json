@@ -1,0 +1,6 @@
+{
+  "elements": {},
+  "imports": [
+    "package:gymassist/core/domain/result.dart"
+  ]
+}
