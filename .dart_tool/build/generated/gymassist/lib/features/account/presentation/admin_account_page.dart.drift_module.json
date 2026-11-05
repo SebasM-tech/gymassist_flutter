@@ -1,8 +1,0 @@
-{
-  "elements": {},
-  "imports": [
-    "package:flutter/material.dart",
-    "package:gymassist/core/utils/validators.dart",
-    "package:gymassist/core/widgets/common.dart"
-  ]
-}

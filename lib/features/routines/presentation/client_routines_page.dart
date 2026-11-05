@@ -1,7 +1,10 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:gymassist/core/mock/mock_data.dart';
+import 'package:gymassist/core/api/data_providers.dart';
+import 'package:gymassist/core/api/models.dart';
+import 'package:gymassist/core/widgets/async_view.dart';
 import 'package:gymassist/core/theme/app_theme.dart';
 import 'package:gymassist/core/widgets/common.dart';
 
@@ -31,12 +34,12 @@ class ClientRoutinesPage extends StatelessWidget {
         Text('Toca o pasa el cursor sobre un grupo muscular para ver más.', style: TextStyle(color: context.muted)),
         const SizedBox(height: 20),
         AdaptiveGrid(minItemWidth: 230, children: [
-          for (var i = 0; i < muscleGroups.length; i++)
+          for (var i = 0; i < gruposMusculares.length; i++)
             _FlipCard(
-              group: muscleGroups[i],
-              description: _descriptions[muscleGroups[i]]!,
+              group: gruposMusculares[i].$2,
+              description: _descriptions[gruposMusculares[i].$2] ?? '',
               colors: _palettes[i % _palettes.length],
-              onOpen: () => context.go('/cliente/rutinas/grupo/${Uri.encodeComponent(muscleGroups[i])}'),
+              onOpen: () => context.go('/cliente/rutinas/grupo/${Uri.encodeComponent(gruposMusculares[i].$1)}'),
             ),
         ]),
       ]);
@@ -108,11 +111,24 @@ class _FlipCardState extends State<_FlipCard> {
   }
 }
 
-class GroupRoutinesPage extends StatelessWidget {
+class GroupRoutinesPage extends ConsumerWidget {
   const GroupRoutinesPage({super.key, required this.grupo});
   final String grupo;
 
-  void _details(BuildContext context, MockRoutine r) => showDialog<void>(
+  static Widget _img(String url, {double? height, double? width}) => Image.network(
+        url,
+        height: height,
+        width: width ?? double.infinity,
+        fit: BoxFit.cover,
+        loadingBuilder: (_, child, p) => p == null ? child : SizedBox(height: height, child: const Center(child: CircularProgressIndicator())),
+        errorBuilder: (_, __, ___) => Container(
+          height: height,
+          color: AppColors.accent.withOpacity(.1),
+          child: const Center(child: Icon(Icons.broken_image_outlined, size: 40, color: AppColors.accent)),
+        ),
+      );
+
+  void _details(BuildContext context, Rutina r) => showDialog<void>(
         context: context,
         builder: (ctx) => Dialog(
           clipBehavior: Clip.antiAlias,
@@ -126,28 +142,28 @@ class GroupRoutinesPage extends StatelessWidget {
                 child: Row(children: [
                   const Icon(Icons.fitness_center, color: Colors.white),
                   const SizedBox(width: 12),
-                  Expanded(child: Text(r.ejercicio, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700))),
+                  Expanded(child: Text(r.nombre, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700))),
                   IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close, color: Colors.white)),
                 ]),
               ),
               Flexible(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.all(20),
-                  child: Wrap(spacing: 16, runSpacing: 16, children: [
-                    for (final f in r.fotos)
-                      SizedBox(
-                        width: 300,
-                        child: Column(children: [
-                          // TODO(routines): Image.file con la ruta local de la foto.
-                          Container(
-                            height: 170,
-                            decoration: BoxDecoration(color: AppColors.accent.withOpacity(.1), borderRadius: BorderRadius.circular(12)),
-                            child: const Center(child: Icon(Icons.image_outlined, size: 48, color: AppColors.accent)),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(f, style: const TextStyle(fontWeight: FontWeight.w500)),
-                        ]),
-                      ),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('${r.series} series · ${r.repeticiones} repeticiones', style: const TextStyle(fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 16),
+                    if (r.fotos.isEmpty) const Text('Esta rutina no tiene fotos.'),
+                    Wrap(spacing: 16, runSpacing: 16, children: [
+                      for (final f in r.fotos)
+                        SizedBox(
+                          width: 300,
+                          child: Column(children: [
+                            ClipRRect(borderRadius: BorderRadius.circular(12), child: _img(f.url, height: 200)),
+                            const SizedBox(height: 8),
+                            Text(f.descripcion, style: const TextStyle(fontWeight: FontWeight.w500)),
+                          ]),
+                        ),
+                    ]),
                   ]),
                 ),
               ),
@@ -157,9 +173,12 @@ class GroupRoutinesPage extends StatelessWidget {
       );
 
   @override
-  Widget build(BuildContext context) {
-    final routines = mockRoutines().where((r) => r.grupo.toLowerCase() == grupo.toLowerCase()).toList();
-    return PageBody(title: 'Rutinas de $grupo', children: [
+  Widget build(BuildContext context, WidgetRef ref) {
+    final valor = grupoValor(grupo) ?? grupo;
+    final rutinas = ref.watch(rutinasClienteProvider);
+    return PageBody(title: 'Rutinas de ${grupoLabel(valor)}', children: asyncChildren(rutinas, onRetry: () => ref.invalidate(rutinasClienteProvider), data: (all) {
+      final routines = all.where((r) => r.grupoMuscular.toLowerCase() == valor.toLowerCase()).toList();
+      return [
       if (routines.isEmpty)
         AppCard(
           child: EmptyState(
@@ -174,15 +193,17 @@ class GroupRoutinesPage extends StatelessWidget {
             AppCard(
               padding: EdgeInsets.zero,
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Container(
-                  height: 120,
-                  color: AppColors.accent.withOpacity(.1),
-                  child: const Center(child: Icon(Icons.image_outlined, size: 40, color: AppColors.accent)),
-                ),
+                r.fotos.isEmpty
+                    ? Container(
+                        height: 140,
+                        color: AppColors.accent.withOpacity(.1),
+                        child: const Center(child: Icon(Icons.image_outlined, size: 40, color: AppColors.accent)),
+                      )
+                    : _img(r.fotos.first.url, height: 140),
                 Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(r.ejercicio, style: context.tt.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                    Text(r.nombre, style: context.tt.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
                     const SizedBox(height: 4),
                     Text('${r.series} series · ${r.repeticiones} repeticiones', style: TextStyle(color: context.muted)),
                     const SizedBox(height: 12),
@@ -195,6 +216,7 @@ class GroupRoutinesPage extends StatelessWidget {
         const SizedBox(height: 16),
         TextButton.icon(onPressed: () => context.go('/cliente/rutinas'), icon: const Icon(Icons.arrow_back), label: const Text('Volver a todas las rutinas')),
       ],
-    ]);
+      ];
+    }));
   }
 }

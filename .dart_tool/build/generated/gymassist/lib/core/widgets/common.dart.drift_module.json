@@ -1,9 +1,0 @@
-{
-  "elements": {},
-  "imports": [
-    "package:flutter/material.dart",
-    "package:intl/intl.dart",
-    "package:gymassist/core/theme/app_theme.dart",
-    "package:gymassist/features/clients/domain/client_status.dart"
-  ]
-}

@@ -72,3 +72,63 @@ Si algún día `flutter pub upgrade` cambia las versiones de `drift` o `sqlite3`
 Notas web: los datos viven en el navegador (IndexedDB/OPFS) y se borran al limpiar los datos del sitio; el hash bcrypt corre en el hilo principal
 (en móvil/desktop corre en un isolate), por eso el primer login puede tardar un instante; `LocalFileStorage` (fotos de rutinas) aún no funciona en web.
 # gymassist_flutter
+
+
+## Predicciones con la red neuronal (FastAPI + TensorFlow)
+La pantalla **Predicciones** (`/admin/predicciones`) ya no usa datos de ejemplo: lee los clientes de la base local
+(plan, membresía, asistencias, medidas), los envía a la API de Python y muestra lo que devuelve la red LSTM:
+probabilidad de abandono, nivel de riesgo, los 3 factores que más pesan, la asistencia semanal y la recomendación.
+
+```
+Flutter (Drift) --JSON--> FastAPI  POST /predecir/lote --> red LSTM + Densa (TensorFlow)
+                <--JSON--  probabilidadAbandono, riesgo, factores, recomendacion
+```
+
+1. Encender la API (repo GymAssist2.0, carpeta `prediccion-ml`):
+   ```
+   cd prediccion-ml
+   .venv\Scripts\activate
+   uvicorn app.main:app --host 0.0.0.0 --port 8000
+   ```
+2. Correr la app:
+   ```
+   flutter pub get
+   flutter run -d chrome --dart-define=SEED_DEMO=true
+   ```
+   `SEED_DEMO` agrega 7 clientes con 12 semanas de historial (valentina, juanh, daniela, miguel, camila, felipe, isabela)
+   para que se vean casos de riesgo bajo, medio, alto y crítico.
+
+Dirección de la API: `lib/core/config/api_config.dart`. Por defecto `http://localhost:8000` (Chrome/Windows) y
+`http://10.0.2.2:8000` (emulador Android). Para un celular real: `--dart-define=ML_API_URL=http://<IP-del-PC>:8000`.
+En Android hay que permitir HTTP sin cifrar: `android:usesCleartextTraffic="true"` en la etiqueta `<application>` de
+`android/app/src/main/AndroidManifest.xml`.
+
+Código: `lib/features/predictions/` (`data/prediction_api_client.dart`, `data/churn_payload_builder.dart`,
+`data/predictions_providers.dart`, `domain/prediction_domain.dart`, `presentation/predictions_page.dart`).
+
+
+## Conexión con el backend (Spring Boot en Railway)
+La app ya no usa datos de ejemplo: todas las pantallas consumen la API de Spring Boot (`/api/m/**`,
+ver `API_MOVIL.md` en el repo GymAssist2.0). Spring Boot tiene las claves de MongoDB, AWS S3 y Mercado Pago;
+la app solo conoce dos direcciones:
+
+| Qué | Variable | Valor por defecto |
+|---|---|---|
+| Backend Spring Boot | `SPRING_API_URL` | `https://gymassist20-production.up.railway.app` |
+| API de predicción (Python) | `ML_API_URL` | `http://localhost:8000` (emulador Android: `10.0.2.2:8000`) |
+
+```bash
+flutter pub get
+flutter run -d chrome                                                   # usa el backend de Railway
+flutter run -d chrome --dart-define=SPRING_API_URL=http://localhost:8080   # backend local
+```
+
+- Login con token JWT (se guarda con `flutter_secure_storage`). Las rutas se protegen por rol y estado:
+  admin sin gimnasio → `/gimnasio/registro`; cliente sin pagar → `/cliente/pago`.
+- Pago: Spring Boot crea el cobro en Mercado Pago y la app abre el link (`url_launcher`); el webhook del
+  backend activa la membresía. El admin también puede registrar pagos en efectivo.
+- Fotos de rutinas: se eligen con `image_picker` y se suben a S3 a través de Spring Boot.
+- Código: `lib/core/api/` (cliente HTTP, sesión, modelos, providers) y las páginas en `lib/features/`.
+- La base local (Drift) y `demo_seed.dart` quedan sin uso por las pantallas.
+
+Si en Chrome las fotos de S3 no cargan, el bucket necesita una regla CORS que permita `GET` desde cualquier origen.

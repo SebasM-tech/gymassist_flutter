@@ -1,22 +1,25 @@
 import 'package:flutter/material.dart';
-import 'package:gymassist/core/mock/mock_data.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:gymassist/core/api/data_providers.dart';
+import 'package:gymassist/core/api/models.dart';
+import 'package:gymassist/core/api/session.dart';
+import 'package:gymassist/core/widgets/async_view.dart';
 import 'package:gymassist/core/theme/app_theme.dart';
 import 'package:gymassist/core/utils/validators.dart';
 import 'package:gymassist/core/widgets/common.dart';
-import 'package:gymassist/features/measurements/domain/imc_calculator.dart';
 
-class ImcPage extends StatefulWidget {
+class ImcPage extends ConsumerStatefulWidget {
   const ImcPage({super.key});
   @override
-  State<ImcPage> createState() => _ImcPageState();
+  ConsumerState<ImcPage> createState() => _ImcPageState();
 }
 
-class _ImcPageState extends State<ImcPage> {
+class _ImcPageState extends ConsumerState<ImcPage> {
   final _key = GlobalKey<FormState>();
   final _peso = TextEditingController();
   final _estatura = TextEditingController();
   final _filtro = TextEditingController();
-  final _items = mockMeasurements(); // TODO(measurements): MeasurementsViewModel + repositorio
+  bool _busy = false;
   bool _showHistory = true;
 
   @override
@@ -27,21 +30,31 @@ class _ImcPageState extends State<ImcPage> {
     super.dispose();
   }
 
-  void _save() {
-    if (!_key.currentState!.validate()) return;
-    setState(() => _items.insert(0, MockMeasurement(DateTime.now(), Validators.parse(_peso.text)!, Validators.parse(_estatura.text)!)));
-    _peso.clear();
-    _estatura.clear();
-    _key.currentState!.reset();
-    showToast(context, 'Medición guardada');
+  Future<void> _save() async {
+    if (!_key.currentState!.validate() || _busy) return;
+    setState(() => _busy = true);
+    final ok = await runAction(
+      context,
+      () => ref.read(gymApiProvider).guardarMedicion(peso: Validators.parse(_peso.text)!, estatura: Validators.parse(_estatura.text)!),
+      ok: 'Medición guardada',
+    );
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (ok) {
+      _peso.clear();
+      _estatura.clear();
+      _key.currentState!.reset();
+      ref.invalidate(medicionesProvider);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final last = _items.isEmpty ? null : _items.first;
-    final imc = last == null ? null : ImcCalculator.calculate(last.peso, last.estatura);
+    final mediciones = ref.watch(medicionesProvider);
+    final items = mediciones.valueOrNull ?? const <Medicion>[];
+    final last = items.isEmpty ? null : items.first;
     final q = _filtro.text.trim();
-    final history = _items.where((m) => formatDate(m.fecha).contains(q)).toList();
+    final history = items.where((m) => m.fecha == null || formatDate(m.fecha!).contains(q)).toList();
 
     return PageBody(title: 'Índice de masa corporal', maxWidth: 900, children: [
       AppCard(
@@ -55,8 +68,8 @@ class _ImcPageState extends State<ImcPage> {
               AppTextField(label: 'Estatura (m)', icon: Icons.height, controller: _estatura, keyboardType: const TextInputType.numberWithOptions(decimal: true), validator: Validators.positive),
             ]),
             const SizedBox(height: 20),
-            GradientButton(label: 'Calcular y guardar', icon: Icons.calculate_outlined, onPressed: _save),
-            if (imc != null) ...[
+            GradientButton(label: _busy ? 'Guardando…' : 'Calcular y guardar', icon: Icons.calculate_outlined, onPressed: _busy ? null : _save),
+            if (last != null) ...[
               const SizedBox(height: 24),
               Container(
                 width: double.infinity,
@@ -65,8 +78,8 @@ class _ImcPageState extends State<ImcPage> {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('Tu último registro de IMC', style: context.tt.titleSmall?.copyWith(color: context.muted)),
                   const SizedBox(height: 4),
-                  Text(imc.toStringAsFixed(2), style: context.tt.displaySmall?.copyWith(fontWeight: FontWeight.w800, color: AppColors.accent)),
-                  Text('Interpretación: ${ImcCalculator.interpret(imc)}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                  Text(last.imc.toStringAsFixed(1), style: context.tt.displaySmall?.copyWith(fontWeight: FontWeight.w800, color: AppColors.accent)),
+                  Text('Interpretación: ${last.interpretacion}', style: const TextStyle(fontWeight: FontWeight.w600)),
                 ]),
               ),
             ],
@@ -95,16 +108,20 @@ class _ImcPageState extends State<ImcPage> {
           ]),
           if (_showHistory) ...[
             const SizedBox(height: 12),
-            if (history.isEmpty)
-              const EmptyState(icon: Icons.search_off, message: 'No hay mediciones para esa fecha.')
+            if (mediciones.isLoading && items.isEmpty)
+              const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()))
+            else if (mediciones.hasError)
+              ErrorCard(message: '${mediciones.error}', onRetry: () => ref.invalidate(medicionesProvider))
+            else if (history.isEmpty)
+              EmptyState(icon: Icons.search_off, message: items.isEmpty ? 'Aún no tienes mediciones. Registra la primera arriba.' : 'No hay mediciones para esa fecha.')
             else
               for (final m in history)
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: const CircleAvatar(child: Icon(Icons.monitor_weight_outlined, size: 18)),
-                  title: Text(formatDate(m.fecha)),
-                  subtitle: Text('${m.peso} kg · ${m.estatura} m'),
-                  trailing: Text('IMC ${ImcCalculator.calculate(m.peso, m.estatura).toStringAsFixed(1)}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                  title: Text(m.fecha == null ? '-' : formatDate(m.fecha!)),
+                  subtitle: Text('${m.peso} kg · ${m.estatura} m · ${m.interpretacion}'),
+                  trailing: Text('IMC ${m.imc.toStringAsFixed(1)}', style: const TextStyle(fontWeight: FontWeight.w700)),
                 ),
           ],
         ]),

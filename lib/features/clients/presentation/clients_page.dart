@@ -1,25 +1,45 @@
 import 'package:flutter/material.dart';
-import 'package:gymassist/core/mock/mock_data.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:gymassist/core/api/data_providers.dart';
+import 'package:gymassist/core/api/models.dart';
+import 'package:gymassist/core/api/session.dart';
 import 'package:gymassist/core/theme/app_theme.dart';
 import 'package:gymassist/core/utils/validators.dart';
+import 'package:gymassist/core/widgets/async_view.dart';
 import 'package:gymassist/core/widgets/common.dart';
 import 'package:gymassist/features/clients/domain/client_status.dart';
 
-class ClientsPage extends StatefulWidget {
+class ClientsPage extends ConsumerStatefulWidget {
   const ClientsPage({super.key});
   @override
-  State<ClientsPage> createState() => _ClientsPageState();
+  ConsumerState<ClientsPage> createState() => _ClientsPageState();
 }
 
-class _ClientsPageState extends State<ClientsPage> {
-  // TODO(clients): reemplazar por ClientsViewModel (Riverpod) + ClientRepository.
-  final _clients = mockClients();
-  final _plans = mockPlans();
+class _ClientsPageState extends ConsumerState<ClientsPage> {
+  String _query = '';
+  ClientStatus? _filtro;
+
+  void _reload() {
+    ref.invalidate(adminClientesProvider);
+    ref.invalidate(adminResumenProvider);
+  }
 
   Future<void> _add() async {
+    List<Plan> planes;
+    try {
+      planes = await ref.read(gymApiProvider).planesAdmin();
+    } catch (e) {
+      if (mounted) showToast(context, '$e', error: true);
+      return;
+    }
+    if (!mounted) return;
+    if (planes.isEmpty) {
+      showToast(context, 'Primero crea un plan en "Planes".', error: true);
+      return;
+    }
     final nombre = TextEditingController(), correo = TextEditingController(), doc = TextEditingController();
     final tel = TextEditingController(), user = TextEditingController(), pass = TextEditingController();
-    String? plan;
+    String? planId;
     final ok = await showFormDialog(
       context,
       title: 'Agregar cliente',
@@ -32,76 +52,119 @@ class _ClientsPageState extends State<ClientsPage> {
         AppTextField(label: 'Número telefónico', icon: Icons.phone_outlined, controller: tel, keyboardType: TextInputType.phone, validator: Validators.notEmpty),
         DropdownButtonFormField<String>(
           isExpanded: true,
-          decoration: const InputDecoration(labelText: 'Tipo de plan', prefixIcon: Icon(Icons.card_membership_outlined, size: 20)),
+          decoration: const InputDecoration(labelText: 'Plan', prefixIcon: Icon(Icons.card_membership_outlined, size: 20)),
           items: [
-            for (final p in _plans)
-              DropdownMenuItem(value: p.nombre, child: Text('${p.nombre} - ${formatCop(p.precio)} / ${p.duracion} meses', overflow: TextOverflow.ellipsis)),
+            for (final p in planes)
+              DropdownMenuItem(value: p.id, child: Text('${p.nombre} - ${formatCop(p.precio)} / ${p.duracionMeses} meses', overflow: TextOverflow.ellipsis)),
           ],
-          onChanged: (v) => plan = v,
+          onChanged: (v) => planId = v,
           validator: (v) => v == null ? 'Selecciona un plan' : null,
         ),
         AppTextField(label: 'Nombre de usuario', icon: Icons.alternate_email, controller: user, validator: Validators.notEmpty),
         AppTextField(label: 'Contraseña', icon: Icons.lock_outline, controller: pass, obscure: true, validator: Validators.minLength(6)),
       ],
     );
-    final c = (nombre.text, correo.text, doc.text, tel.text, user.text);
+    final v = (nombre.text.trim(), correo.text.trim(), doc.text.trim(), tel.text.trim(), user.text.trim(), pass.text);
     for (final x in [nombre, correo, doc, tel, user, pass]) {
       x.dispose();
     }
+    if (!ok || !mounted || planId == null) return;
+    final done = await runAction(
+      context,
+      () => ref.read(gymApiProvider).crearCliente(
+            nombre: v.$1, correo: v.$2, documento: v.$3, telefono: v.$4, planId: planId!, username: v.$5, password: v.$6),
+      ok: 'Cliente agregado (queda pendiente de pago)',
+    );
+    if (done) _reload();
+  }
+
+  Future<void> _estado(Cliente c, String estado, String msg) async {
+    if (await runAction(context, () => ref.read(gymApiProvider).cambiarEstado(c.id, estado), ok: msg)) _reload();
+  }
+
+  Future<void> _pago(Cliente c) async {
+    final ok = await showConfirm(context,
+        title: 'Registrar pago',
+        message: '¿${c.nombre} pagó ${c.planPrecio == null ? 'su plan' : formatCop(c.planPrecio!)} en efectivo o transferencia? '
+            'Su membresía quedará activa por ${c.planDuracionMeses ?? 1} ${c.planDuracionMeses == 1 ? 'mes' : 'meses'}.',
+        confirmLabel: 'Sí, registrar');
     if (!ok || !mounted) return;
-    // TODO(clients): CreateClient use case (valida email/username únicos, calcula fechas de membresía).
-    setState(() => _clients.add(MockClient(
-        nombre: c.$1, correo: c.$2, documento: c.$3, telefono: c.$4, plan: plan!, username: c.$5, estado: ClientStatus.pendiente)));
-    showToast(context, 'Cliente agregado');
+    if (await runAction(context, () => ref.read(gymApiProvider).pagoManual(c.id), ok: 'Pago registrado, membresía activa')) _reload();
   }
 
-  void _set(MockClient c, ClientStatus s, String msg) {
-    setState(() => c.estado = s);
-    showToast(context, msg);
-  }
-
-  List<Widget> _actions(MockClient c) => [
-        if (c.estado == ClientStatus.pendiente)
-          SmallActionButton('Registrar pago', Icons.payments_outlined, AppColors.success, () => _set(c, ClientStatus.activo, 'Pago registrado')),
+  List<Widget> _actions(Cliente c) => [
+        if (c.estado != ClientStatus.activo)
+          SmallActionButton('Registrar pago', Icons.payments_outlined, AppColors.success, () => _pago(c)),
         if (c.estado == ClientStatus.activo)
-          SmallActionButton('Detener', Icons.pause_circle_outline, AppColors.warning, () => _set(c, ClientStatus.pendiente, 'Membresía detenida')),
+          SmallActionButton('Renovar', Icons.autorenew, AppColors.success, () => _pago(c)),
+        if (c.estado == ClientStatus.activo)
+          SmallActionButton('Detener', Icons.pause_circle_outline, AppColors.warning, () => _estado(c, 'PENDIENTE', 'Membresía detenida')),
         if (c.estado != ClientStatus.suspendido)
           SmallActionButton('Suspender', Icons.block, AppColors.danger, () async {
             final ok = await showConfirm(context, title: 'Suspender cliente', message: '¿Suspender a ${c.nombre}?', confirmLabel: 'Suspender', danger: true);
-            if (ok && mounted) _set(c, ClientStatus.suspendido, 'Cliente suspendido');
+            if (ok && mounted) _estado(c, 'SUSPENDIDO', 'Cliente suspendido');
           }),
         if (c.estado == ClientStatus.suspendido)
-          SmallActionButton('Activar', Icons.check_circle_outline, AppColors.info, () => _set(c, ClientStatus.activo, 'Cliente activado')),
+          SmallActionButton('Reactivar', Icons.check_circle_outline, AppColors.info, () => _estado(c, 'ACTIVO', 'Cliente activado')),
       ];
 
   @override
   Widget build(BuildContext context) {
-    int count(ClientStatus s) => _clients.where((c) => c.estado == s).length;
-    return PageBody(
-      title: 'Clientes',
-      trailing: GradientButton(label: 'Agregar', icon: Icons.add, onPressed: _add),
-      children: [
-        AdaptiveGrid(minItemWidth: 150, children: [
-          StatCard(icon: Icons.how_to_reg_outlined, label: 'Usuarios activos', value: '${count(ClientStatus.activo)}', color: AppColors.success, caption: 'Con membresía vigente'),
-          StatCard(icon: Icons.person_off_outlined, label: 'Usuarios suspendidos', value: '${count(ClientStatus.suspendido)}', color: AppColors.danger, caption: 'Sin acceso al gimnasio'),
-          StatCard(icon: Icons.groups_outlined, label: 'Usuarios totales', value: '${_clients.length}', caption: 'Todos los registrados'),
-        ]),
-        const SizedBox(height: 24),
-        CardList(children: [
-          for (final c in _clients)
-            ListCard(
-              title: c.nombre,
-              badge: StatusBadge.forClient(c.estado),
-              lines: [
-                (Icons.mail_outline, c.correo),
-                (Icons.phone_outlined, c.telefono),
-                (Icons.badge_outlined, 'Documento ${c.documento}'),
-                (Icons.card_membership_outlined, 'Plan ${c.plan} · @${c.username}'),
-              ],
-              actions: _actions(c),
+    final clientes = ref.watch(adminClientesProvider);
+    return RefreshIndicator(
+      onRefresh: () => ref.refresh(adminClientesProvider.future),
+      child: PageBody(
+        title: 'Clientes',
+        trailing: GradientButton(label: 'Agregar', icon: Icons.add, onPressed: _add),
+        children: asyncChildren(clientes, onRetry: _reload, data: (all) {
+          int count(ClientStatus s) => all.where((c) => c.estado == s).length;
+          final q = _query.toLowerCase();
+          final list = all
+              .where((c) => _filtro == null || c.estado == _filtro)
+              .where((c) => q.isEmpty || c.nombre.toLowerCase().contains(q) || c.username.toLowerCase().contains(q) || c.documento.contains(q))
+              .toList()
+            ..sort((a, b) => a.nombre.toLowerCase().compareTo(b.nombre.toLowerCase()));
+          return [
+            AdaptiveGrid(minItemWidth: 150, children: [
+              StatCard(icon: Icons.how_to_reg_outlined, label: 'Activos', value: '${count(ClientStatus.activo)}', color: AppColors.success, caption: 'Con membresía vigente'),
+              StatCard(icon: Icons.hourglass_bottom, label: 'Pendientes', value: '${count(ClientStatus.pendiente)}', color: AppColors.warning, caption: 'Sin pago'),
+              StatCard(icon: Icons.person_off_outlined, label: 'Suspendidos', value: '${count(ClientStatus.suspendido)}', color: AppColors.danger, caption: 'Sin acceso'),
+              StatCard(icon: Icons.groups_outlined, label: 'Totales', value: '${all.length}', caption: 'Todos los registrados'),
+            ]),
+            const SizedBox(height: 16),
+            TextField(
+              decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Buscar por nombre, usuario o documento'),
+              onChanged: (v) => setState(() => _query = v),
             ),
-        ]),
-      ],
+            const SizedBox(height: 10),
+            Wrap(spacing: 8, children: [
+              ChoiceChip(label: const Text('Todos'), selected: _filtro == null, onSelected: (_) => setState(() => _filtro = null)),
+              for (final s in ClientStatus.values)
+                ChoiceChip(label: Text(s.name[0].toUpperCase() + s.name.substring(1)), selected: _filtro == s, onSelected: (_) => setState(() => _filtro = s)),
+            ]),
+            const SizedBox(height: 16),
+            if (list.isEmpty)
+              const AppCard(child: EmptyState(icon: Icons.person_search_outlined, message: 'No hay clientes con ese filtro.'))
+            else
+              CardList(children: [
+                for (final c in list)
+                  ListCard(
+                    title: c.nombre,
+                    badge: StatusBadge.forClient(c.estado),
+                    lines: [
+                      (Icons.mail_outline, c.correo),
+                      (Icons.phone_outlined, c.telefono),
+                      (Icons.badge_outlined, 'Documento ${c.documento}'),
+                      (Icons.card_membership_outlined, 'Plan ${c.planNombre ?? '-'} · @${c.username}'),
+                      if (c.fechaFinMembresia != null) (Icons.event_outlined, 'Vence: ${formatDate(c.fechaFinMembresia!)}'),
+                      (Icons.event_available_outlined, '${c.totalAsistencias} asistencias · ${c.inasistencias} inasistencias'),
+                    ],
+                    actions: _actions(c),
+                  ),
+              ]),
+          ];
+        }),
+      ),
     );
   }
 }

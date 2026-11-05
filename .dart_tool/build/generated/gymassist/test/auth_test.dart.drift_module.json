@@ -1,9 +1,0 @@
-{
-  "elements": {},
-  "imports": [
-    "package:flutter_test/flutter_test.dart",
-    "package:gymassist/core/domain/result.dart",
-    "package:gymassist/features/auth/domain/auth_service.dart",
-    "asset:gymassist/test/support/test_env.dart"
-  ]
-}

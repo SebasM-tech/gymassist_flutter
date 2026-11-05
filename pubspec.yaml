@@ -25,6 +25,10 @@ dependencies:
   flutter_secure_storage: ^9.2.2
   bcrypt: ^1.1.3
   uuid: ^4.5.0
+  # --- API de predicción (FastAPI + TensorFlow) ---
+  http: ^1.2.2
+  url_launcher: ^6.3.0     # abrir el checkout de Mercado Pago
+  image_picker: ^1.1.2     # fotos de las rutinas (se suben a S3 vía Spring Boot)
 
 dev_dependencies:
   flutter_test:

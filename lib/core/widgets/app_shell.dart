@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:gymassist/core/api/session.dart';
 import 'package:gymassist/core/theme/app_theme.dart';
 import 'package:gymassist/core/widgets/common.dart';
 import 'package:gymassist/features/chatbot/presentation/chatbot_panel.dart';
@@ -44,14 +45,15 @@ class AppShell extends ConsumerWidget {
   bool _active(NavItem i) =>
       (i.path == '/admin' || i.path == '/cliente') ? location == i.path : location.startsWith(i.path);
 
-  Future<void> _logout(BuildContext context) async {
+  Future<void> _logout(BuildContext context, WidgetRef ref) async {
     final ok = await showConfirm(context,
         title: '¿Cerrar sesión?',
         message: 'Tu sesión actual será cerrada.',
         confirmLabel: 'Sí, cerrar sesión',
         danger: true);
-    // TODO(auth): limpiar la sesión local (flutter_secure_storage).
-    if (ok && context.mounted) context.go('/login');
+    if (!ok) return;
+    await ref.read(sessionProvider.notifier).logout();
+    if (context.mounted) context.go('/login');
   }
 
   void _showMore(BuildContext context) => showModalBottomSheet<void>(
@@ -97,7 +99,7 @@ class AppShell extends ConsumerWidget {
           PopupMenuButton<String>(
             tooltip: 'Perfil',
             icon: const Icon(Icons.account_circle_outlined, size: 28),
-            onSelected: (v) => v == 'cuenta' ? context.go(isAdmin ? '/admin/cuenta' : '/cliente/cuenta') : _logout(context),
+            onSelected: (v) => v == 'cuenta' ? context.go(isAdmin ? '/admin/cuenta' : '/cliente/cuenta') : _logout(context, ref),
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'cuenta', child: ListTile(leading: Icon(Icons.manage_accounts_outlined), title: Text('Cuenta'), contentPadding: EdgeInsets.zero)),
               PopupMenuItem(value: 'salir', child: ListTile(leading: Icon(Icons.logout, color: AppColors.danger), title: Text('Cerrar sesión', style: TextStyle(color: AppColors.danger)), contentPadding: EdgeInsets.zero)),

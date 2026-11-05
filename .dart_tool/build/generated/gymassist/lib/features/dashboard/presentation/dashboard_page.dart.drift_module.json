@@ -1,9 +1,0 @@
-{
-  "elements": {},
-  "imports": [
-    "package:fl_chart/fl_chart.dart",
-    "package:flutter/material.dart",
-    "package:gymassist/core/theme/app_theme.dart",
-    "package:gymassist/core/widgets/common.dart"
-  ]
-}
