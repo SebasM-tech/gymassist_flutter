@@ -1,17 +1,18 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:gymassist/core/api/session.dart';
 import 'package:gymassist/core/theme/app_theme.dart';
 import 'package:gymassist/core/utils/validators.dart';
 import 'package:gymassist/core/widgets/common.dart';
 
-class AuthPage extends StatefulWidget {
+class AuthPage extends ConsumerStatefulWidget {
   const AuthPage({super.key});
   @override
-  State<AuthPage> createState() => _AuthPageState();
+  ConsumerState<AuthPage> createState() => _AuthPageState();
 }
 
-class _AuthPageState extends State<AuthPage> {
+class _AuthPageState extends ConsumerState<AuthPage> {
   final _loginKey = GlobalKey<FormState>();
   final _regKey = GlobalKey<FormState>();
   final _lUser = TextEditingController();
@@ -21,6 +22,7 @@ class _AuthPageState extends State<AuthPage> {
   final _rPass = TextEditingController();
   final _rConfirm = TextEditingController();
   bool _register = false;
+  bool _busy = false;
 
   @override
   void dispose() {
@@ -30,17 +32,33 @@ class _AuthPageState extends State<AuthPage> {
     super.dispose();
   }
 
-  void _login() {
-    if (!_loginKey.currentState!.validate()) return;
-    // TODO(auth): AuthController.login -> redirigir según rol y estado (PENDIENTE => /cliente/pago).
-    context.go('/admin');
+  Future<void> _login() async {
+    if (!_loginKey.currentState!.validate() || _busy) return;
+    setState(() => _busy = true);
+    try {
+      final s = await ref.read(sessionProvider.notifier).login(_lUser.text, _lPass.text);
+      if (mounted) context.go(homeFor(s));
+    } catch (e) {
+      if (mounted) showToast(context, '$e', error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
-  void _doRegister() {
-    if (!_regKey.currentState!.validate()) return;
-    // TODO(auth): RegisterAdmin use case; en el primer inicio continúa con /gimnasio/registro.
-    setState(() => _register = false);
-    showToast(context, 'Registro exitoso. Ahora puedes iniciar sesión.');
+  Future<void> _doRegister() async {
+    if (!_regKey.currentState!.validate() || _busy) return;
+    setState(() => _busy = true);
+    try {
+      final s = await ref.read(sessionProvider.notifier).registerAdmin(username: _rUser.text, email: _rMail.text, password: _rPass.text);
+      if (mounted) {
+        showToast(context, 'Cuenta creada. Ahora registra tu gimnasio.');
+        context.go(homeFor(s));
+      }
+    } catch (e) {
+      if (mounted) showToast(context, '$e', error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   @override
@@ -96,17 +114,9 @@ class _AuthPageState extends State<AuthPage> {
           const SizedBox(height: 14),
           AppTextField(label: 'Contraseña', icon: Icons.lock_outline, controller: _lPass, obscure: true, validator: Validators.notEmpty),
           const SizedBox(height: 22),
-          GradientButton(label: 'Iniciar sesión', icon: Icons.login, expanded: true, onPressed: _login),
+          GradientButton(label: _busy ? 'Ingresando…' : 'Iniciar sesión', icon: Icons.login, expanded: true, onPressed: _busy ? null : _login),
           const SizedBox(height: 8),
           TextButton(onPressed: () => setState(() => _register = true), child: const Text('¿Aún no tienes cuenta? Regístrate')),
-          if (kDebugMode) ...[
-            const Divider(),
-            Text('Solo para revisar vistas', style: context.tt.bodySmall?.copyWith(color: context.muted)),
-            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              TextButton(onPressed: () => context.go('/admin'), child: const Text('Entrar como admin')),
-              TextButton(onPressed: () => context.go('/cliente'), child: const Text('Entrar como cliente')),
-            ]),
-          ],
         ]),
       );
 
@@ -122,7 +132,7 @@ class _AuthPageState extends State<AuthPage> {
           const SizedBox(height: 14),
           AppTextField(label: 'Confirmar contraseña', icon: Icons.lock_outline, controller: _rConfirm, obscure: true, validator: Validators.matches(_rPass)),
           const SizedBox(height: 22),
-          GradientButton(label: 'Crear cuenta', icon: Icons.person_add_alt_1, expanded: true, onPressed: _doRegister),
+          GradientButton(label: _busy ? 'Creando…' : 'Crear cuenta', icon: Icons.person_add_alt_1, expanded: true, onPressed: _busy ? null : _doRegister),
           const SizedBox(height: 8),
           TextButton(onPressed: () => setState(() => _register = false), child: const Text('¿Ya tienes cuenta? Inicia sesión')),
         ]),

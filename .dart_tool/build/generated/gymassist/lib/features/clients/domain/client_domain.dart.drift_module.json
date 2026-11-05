@@ -1,6 +1,0 @@
-{
-  "elements": {},
-  "imports": [
-    "package:gymassist/features/clients/domain/client_status.dart"
-  ]
-}

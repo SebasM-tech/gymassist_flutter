@@ -1,1 +1,0 @@
-{"valid_import":true,"imports":[{"uri":"package:gymassist/core/domain/ports.dart","transitive":false},{"uri":"package:gymassist/core/domain/result.dart","transitive":false},{"uri":"package:gymassist/features/measurements/domain/imc_calculator.dart","transitive":false}],"elements":[]}

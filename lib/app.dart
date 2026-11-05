@@ -17,7 +17,7 @@ class GymAssistApp extends ConsumerWidget {
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       themeMode: ref.watch(themeModeProvider),
-      routerConfig: appRouter,
+      routerConfig: ref.watch(routerProvider),
       locale: const Locale('es', 'CO'),
       supportedLocales: const [Locale('es', 'CO')],
       localizationsDelegates: const [

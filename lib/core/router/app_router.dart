@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:gymassist/core/api/session.dart';
 import 'package:gymassist/core/widgets/app_shell.dart';
 import 'package:gymassist/core/widgets/error_pages.dart';
 import 'package:gymassist/features/account/presentation/admin_account_page.dart';
@@ -23,9 +25,35 @@ import 'package:gymassist/features/routines/presentation/routines_admin_page.dar
 
 Page<void> _page(Widget w) => NoTransitionPage<void>(child: w);
 
-/// TODO(auth): agregar `redirect` con guardas por rol (ADMIN / CLIENTE) y por estado del cliente.
-final appRouter = GoRouter(
-  initialLocation: '/',
+/// Guardas de navegación según la sesión del backend (rol ADMIN / CLIENTE y estado del cliente).
+String? _guard(AppSession? s, bool loading, String loc) {
+  final protected = loc.startsWith('/admin') || loc.startsWith('/cliente') || loc.startsWith('/gimnasio');
+  if (loading) return null;
+  if (s == null) return protected ? '/login' : null;
+  if (loc == '/login') return homeFor(s);
+  if (s.isAdmin) {
+    if (loc.startsWith('/cliente')) return '/acceso-denegado';
+    if (!s.tieneGimnasio && loc.startsWith('/admin')) return '/gimnasio/registro';
+    if (s.tieneGimnasio && loc.startsWith('/gimnasio')) return '/admin';
+  } else {
+    if (loc.startsWith('/admin') || loc.startsWith('/gimnasio')) return '/acceso-denegado';
+    final activo = s.cliente?.activo ?? false;
+    if (!activo && (loc.startsWith('/cliente/rutinas') || loc.startsWith('/cliente/asistencia'))) return '/cliente/pago';
+  }
+  return null;
+}
+
+final routerProvider = Provider<GoRouter>((ref) {
+  final refresh = ValueNotifier<int>(0);
+  ref.listen(sessionProvider, (_, __) => refresh.value++);
+  ref.onDispose(refresh.dispose);
+  return GoRouter(
+    initialLocation: '/',
+    refreshListenable: refresh,
+    redirect: (_, state) {
+      final s = ref.read(sessionProvider);
+      return _guard(s.valueOrNull, s.isLoading, state.uri.path);
+    },
   errorBuilder: (_, __) => const ErrorPage(title: 'Página no encontrada', message: 'La dirección que buscas no existe.'),
   routes: [
     GoRoute(path: '/', builder: (_, __) => const LandingPage()),
@@ -58,8 +86,9 @@ final appRouter = GoRouter(
         GoRoute(path: '/cliente/rutinas/grupo/:grupo', pageBuilder: (_, s) => _page(GroupRoutinesPage(grupo: s.pathParameters['grupo']!))),
         GoRoute(path: '/cliente/asistencia', pageBuilder: (_, __) => _page(const AttendancePage())),
         GoRoute(path: '/cliente/cuenta', pageBuilder: (_, __) => _page(const ClientAccountPage())),
-        GoRoute(path: '/cliente/pago', pageBuilder: (_, __) => _page(const PaymentPage())),
+        GoRoute(path: '/cliente/pago', pageBuilder: (_, s) => _page(PaymentPage(resultado: s.uri.queryParameters['pago']))),
       ],
     ),
   ],
 );
+});

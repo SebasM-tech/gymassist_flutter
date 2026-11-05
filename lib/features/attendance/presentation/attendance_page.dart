@@ -1,21 +1,24 @@
 import 'package:flutter/material.dart';
-import 'package:gymassist/core/mock/mock_data.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:gymassist/core/api/data_providers.dart';
+import 'package:gymassist/core/api/models.dart';
+import 'package:gymassist/core/api/session.dart';
+import 'package:gymassist/core/widgets/async_view.dart';
 import 'package:gymassist/core/theme/app_theme.dart';
 import 'package:gymassist/core/widgets/common.dart';
 
-class AttendancePage extends StatefulWidget {
+class AttendancePage extends ConsumerStatefulWidget {
   const AttendancePage({super.key});
   @override
-  State<AttendancePage> createState() => _AttendancePageState();
+  ConsumerState<AttendancePage> createState() => _AttendancePageState();
 }
 
-class _AttendancePageState extends State<AttendancePage> {
-  final _items = mockAttendances(); // TODO(attendance): AttendanceViewModel + RegisterAttendance use case
+class _AttendancePageState extends ConsumerState<AttendancePage> {
   final _selected = <String>{};
   final _filtro = TextEditingController();
   bool _showTimeline = true;
   String? _error;
-  int _missed = 3;
+  bool _busy = false;
 
   @override
   void dispose() {
@@ -23,24 +26,37 @@ class _AttendancePageState extends State<AttendancePage> {
     super.dispose();
   }
 
-  void _register() {
+  Future<void> _register() async {
     if (_selected.isEmpty) {
       setState(() => _error = 'Debes seleccionar al menos un músculo trabajado.');
       return;
     }
-    // TODO(attendance): la regla de inasistencias (huecos de días) vive en el use case.
+    if (_busy) return;
+    setState(() => _busy = true);
+    final ok = await runAction(context, () => ref.read(gymApiProvider).registrarAsistencia(_selected.toList()), ok: 'Asistencia registrada');
+    if (!mounted) return;
     setState(() {
-      _items.insert(0, MockAttendance(DateTime.now(), _selected.toList()));
-      _selected.clear();
-      _error = null;
+      _busy = false;
+      if (ok) {
+        _selected.clear();
+        _error = null;
+      }
     });
-    showToast(context, 'Asistencia registrada');
+    if (ok) {
+      ref.invalidate(asistenciasProvider);
+      ref.invalidate(perfilProvider);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final info = ref.watch(asistenciasProvider);
+    final gym = ref.watch(sessionProvider).valueOrNull?.gym?.nombre ?? '-';
+    final data = info.valueOrNull;
+    final items = data?.asistencias ?? const <Asistencia>[];
+    final yaHoy = data?.hoyRegistrada ?? false;
     final q = _filtro.text.trim().toLowerCase();
-    final list = _items.where((a) => '${formatDate(a.fecha)} ${a.musculos.join(' ')}'.toLowerCase().contains(q)).toList();
+    final list = items.where((a) => '${formatDate(a.fecha)} ${a.musculos.map(grupoLabel).join(' ')}'.toLowerCase().contains(q)).toList();
 
     final register = AppCard(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -51,12 +67,12 @@ class _AttendancePageState extends State<AttendancePage> {
         Text('Músculos trabajados', style: context.tt.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
         Wrap(spacing: 8, runSpacing: 8, children: [
-          for (final g in muscleGroups)
+          for (final g in gruposMusculares)
             FilterChip(
-              label: Text(g),
-              selected: _selected.contains(g),
-              onSelected: (v) => setState(() {
-                v ? _selected.add(g) : _selected.remove(g);
+              label: Text(g.$2),
+              selected: _selected.contains(g.$1),
+              onSelected: yaHoy ? null : (v) => setState(() {
+                v ? _selected.add(g.$1) : _selected.remove(g.$1);
                 _error = null;
               }),
             ),
@@ -74,7 +90,7 @@ class _AttendancePageState extends State<AttendancePage> {
           ),
         ],
         const SizedBox(height: 20),
-        GradientButton(label: 'Registrar', icon: Icons.check, expanded: true, onPressed: _register),
+        GradientButton(label: yaHoy ? 'Ya registraste hoy ✅' : (_busy ? 'Registrando…' : 'Registrar'), icon: Icons.check, expanded: true, onPressed: (yaHoy || _busy) ? null : _register),
       ]),
     );
 
@@ -99,7 +115,11 @@ class _AttendancePageState extends State<AttendancePage> {
         ]),
         if (_showTimeline) ...[
           const SizedBox(height: 12),
-          if (list.isEmpty)
+          if (info.isLoading && data == null)
+            const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()))
+          else if (info.hasError)
+            ErrorCard(message: '${info.error}', onRetry: () => ref.invalidate(asistenciasProvider))
+          else if (list.isEmpty)
             const EmptyState(icon: Icons.event_busy_outlined, message: 'Todavía no hay asistencias. Registra la primera.')
           else
             for (final a in list)
@@ -111,7 +131,7 @@ class _AttendancePageState extends State<AttendancePage> {
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(formatDate(a.fecha), style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.accent)),
-                    Text(a.musculos.join(', ')),
+                    Text(a.musculos.map(grupoLabel).join(', ')),
                   ]),
                 ),
               ),
@@ -121,8 +141,9 @@ class _AttendancePageState extends State<AttendancePage> {
 
     return PageBody(title: 'Asistencia', children: [
       AdaptiveGrid(minItemWidth: 150, children: [
-        const StatCard(icon: Icons.store_mall_directory_outlined, label: 'Gimnasio al que perteneces', value: 'FitLife Gym'),
-        StatCard(icon: Icons.event_busy_outlined, label: 'Total de inasistencias', value: '$_missed', color: AppColors.warning),
+        StatCard(icon: Icons.store_mall_directory_outlined, label: 'Gimnasio al que perteneces', value: gym),
+        StatCard(icon: Icons.event_available_outlined, label: 'Asistencias', value: '${items.length}', color: AppColors.success),
+        StatCard(icon: Icons.event_busy_outlined, label: 'Total de inasistencias', value: '${data?.inasistencias ?? 0}', color: AppColors.warning),
       ]),
       const SizedBox(height: 24),
       register, const SizedBox(height: 20), timeline,

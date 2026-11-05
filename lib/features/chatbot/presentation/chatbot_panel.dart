@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:gymassist/core/api/session.dart';
 import 'package:gymassist/core/theme/app_theme.dart';
 
 class ChatbotFab extends StatelessWidget {
@@ -26,22 +28,13 @@ class _Msg {
   final bool fromBot;
 }
 
-// TODO(chatbot): reemplazar por ChatbotEngine (intents locales + datos del cliente desde repositorios).
-String _localReply(String t) {
-  final s = t.toLowerCase();
-  if (s.contains('hola') || s.contains('buenas')) return '¡Hola! Soy GymAssist Bot 💪 ¿En qué puedo ayudarte?';
-  if (s.contains('plan')) return 'Aquí mostraré el estado de tu plan con tus datos locales.';
-  if (s.contains('imc') || s.contains('peso')) return 'Aquí calcularé tu IMC con tu última medición.';
-  return 'Todavía estoy aprendiendo. Pregúntame por tu plan, tu IMC o tus rutinas.';
-}
-
-class ChatPanel extends StatefulWidget {
+class ChatPanel extends ConsumerStatefulWidget {
   const ChatPanel({super.key});
   @override
-  State<ChatPanel> createState() => _ChatPanelState();
+  ConsumerState<ChatPanel> createState() => _ChatPanelState();
 }
 
-class _ChatPanelState extends State<ChatPanel> {
+class _ChatPanelState extends ConsumerState<ChatPanel> {
   final _ctrl = TextEditingController();
   final _scroll = ScrollController();
   final _msgs = <_Msg>[];
@@ -70,10 +63,16 @@ class _ChatPanelState extends State<ChatPanel> {
     });
     _ctrl.clear();
     _toBottom();
-    await Future<void>.delayed(const Duration(milliseconds: 600));
+    // El chatbot vive en Spring Boot (intents + Groq) y conoce los datos del cliente logueado.
+    String reply;
+    try {
+      reply = await ref.read(gymApiProvider).chatbot(t);
+    } catch (e) {
+      reply = '⚠️ $e';
+    }
     if (!mounted) return;
     setState(() {
-      _msgs.add(_Msg(_localReply(t), true));
+      _msgs.add(_Msg(reply, true));
       _typing = false;
     });
     _toBottom();
